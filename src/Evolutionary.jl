@@ -1,68 +1,44 @@
 module Evolutionary
-using Random
-    export Strategy, strategy, inverse, mutationwrapper,
+    using Random, LinearAlgebra, Statistics
+    using Base: @kwdef
+    using UnPack: @unpack
+    using NLSolversBase: AbstractObjective, NonDifferentiable, ConstraintBounds,
+                         value, value!, nconstraints_x, nconstraints, AbstractConstraints
+
+    import NLSolversBase: NonDifferentiable, f_calls, value, value!
+    import Base: show, copy, minimum, summary, identity, getproperty
+
+    export AbstractStrategy, strategy, mutationwrapper,
+           IsotropicStrategy, AnisotropicStrategy, NoStrategy,
+           isfeasible, BoxConstraints, apply!, penalty, penalty!,
+           PenaltyConstraints, WorstFitnessConstraints, MixedTypePenaltyConstraints,
            # ES mutations
-           isotropic, anisotropic, isotropicSigma, anisotropicSigma,
+           gaussian, cauchy,
            # GA mutations
-           flip, domainrange, inversion, insertion, swap2, scramble, shifting,
+           flip, bitinversion, domainrange, inversion, insertion, swap2, scramble, shifting, PM, MIPM,
            # ES recombinations
-           average, marriage, averageSigma1, averageSigmaN,
+           average, marriage,
            # GA recombinations
            singlepoint, twopoint, uniform,
-           discrete, waverage, intermediate, line,
-           pmx, ox1, cx, ox2, pos,
+           discrete, waverage, intermediate, line, HX, LX, MILX,
+           PMX, OX1, CX, OX2, POS,
            # GA selections
-           ranklinear, uniformranking, roulette, sus, tournament, #truncation
+           ranklinear, uniformranking, roulette, rouletteinv, sus, susinv, tournament, truncation,
+           # DE selections
+           random, permutation, randomoffset, best,
+           # DE recombinations
+           uniformbin, exponential,
            # Optimization methods
-           es, cmaes, ga
+           ES, CMAES, GA, DE,
+           # re-export
+           NonDifferentiable, value, value!
 
-    const Strategy = Dict{Symbol,Any}
-    const Individual = Union{Vector, Matrix, Function, Nothing}
-
-    # Wrapping function for strategy
-    function strategy(; kwargs...)
-        result = Dict{Symbol,Any}()
-        for (k, v) in kwargs
-            result[k] = v
-        end
-        return result
-    end
-
-    # Inverse function for reversing optimization direction
-    function inverseFunc(f::Function)
-        function fitnessFunc(x::T) where {T <: Vector}
-            return 1.0/(f(x)+eps())
-        end
-        return fitnessFunc
-    end
-
-    # Obtain individual
-    function getIndividual(init::Individual, N::Int)
-        if isa(init, Vector)
-            @assert length(init) == N "Dimensionality of initial population must be $(N)"
-            individual = init
-        elseif isa(init, Matrix)
-            @assert size(init, 1) == N "Dimensionality of initial population must be $(N)"
-            populationSize = size(init, 2)
-            individual = init[:, 1]
-        elseif isa(init, Function) # Creation function
-            individual = init(N)
-        else
-            individual = ones(N)
-        end
-        return  individual
-    end
-
-    # Collecting interim values
-    function keep(interim, v, vv, col)
-        if interim
-            if !haskey(col, v)
-                col[v] = typeof(vv)[]
-            end
-            push!(col[v], vv)
-        end
-    end
-
+    # optimize API
+    include("api/types.jl")
+    include("api/results.jl")
+    include("api/utilities.jl")
+    include("api/constraints.jl")
+    include("api/optimize.jl")
 
     # ES & GA recombination functions
     include("recombinations.jl")
@@ -80,4 +56,14 @@ using Random
     # Genetic Algorithms
     include("ga.jl")
 
+    # Differential Evolution
+    include("de.jl")
+
+    # deprecations
+    @deprecate isotropic(recombinant, strategy) gaussian(recombinant, strategy)
+    @deprecate anisotropic(recombinant, strategy) gaussian(recombinant, strategy)
+    @deprecate isotropicSigma(strategy) gaussian(strategy)
+    @deprecate anisotropicSigma(strategy) gaussian(strategy)
+    @deprecate averageSigma(strategy) average(strategy)
+    @deprecate strategy(kwargs...) IsotropicStrategy(N) false
 end
